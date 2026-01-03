@@ -1,27 +1,34 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  // Omit apiVersion for now to avoid mismatches during deployment.
-  // You can pin later (e.g., "2023-10-16") once everything is stable.
-});
+// Initialize Stripe using the secret key from environment variables
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(req: Request) {
   let bookingId: unknown;
   let length: unknown;
 
+  // Parse request body safely
   try {
     const body = await req.json();
     bookingId = body?.bookingId;
     length = body?.length;
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid JSON body" },
+      { status: 400 }
+    );
   }
 
+  // Validate bookingId
   if (typeof bookingId !== "string" || bookingId.trim().length === 0) {
-    return NextResponse.json({ error: "bookingId is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "bookingId is required" },
+      { status: 400 }
+    );
   }
 
+  // Server-trusted pricing (amounts in cents)
   const priceMap: Record<number, number> = {
     30: 2500,
     60: 6000,
@@ -31,15 +38,24 @@ export async function POST(req: Request) {
   const price = priceMap[lengthNum];
 
   if (!price) {
-    return NextResponse.json({ error: "Unsupported lesson length" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Unsupported lesson length" },
+      { status: 400 }
+    );
   }
 
-  const baseUrl = process.env.BASE_URL ?? req.headers.get("origin");
+  // Determine base URL for redirects
+  const baseUrl =
+    process.env.BASE_URL ?? req.headers.get("origin");
 
   if (!baseUrl) {
-    return NextResponse.json({ error: "Base URL is not configured" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Base URL is not configured" },
+      { status: 500 }
+    );
   }
 
+  // Create Stripe Checkout session
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -47,15 +63,21 @@ export async function POST(req: Request) {
         {
           price_data: {
             currency: "usd",
-            product_data: { name: `MDC Lesson (${lengthNum} min)` },
+            product_data: {
+              name: `MDC Lesson (${lengthNum} min)`,
+            },
             unit_amount: price,
           },
           quantity: 1,
         },
       ],
-      success_url: `${baseUrl}/student/confirmation?bookingId=${encodeURIComponent(bookingId)}`,
+      success_url: `${baseUrl}/student/confirmation?bookingId=${encodeURIComponent(
+        bookingId
+      )}`,
       cancel_url: `${baseUrl}/student`,
-      metadata: { bookingId },
+      metadata: {
+        bookingId,
+      },
     });
 
     if (!session.url) {
@@ -68,6 +90,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Stripe checkout error:", error);
-    return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create checkout session" },
+      { status: 500 }
+    );
   }
 }
