@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  // Recommended: omit apiVersion until everything is stable
-  // apiVersion: "2023-10-16",
+  // Omit apiVersion for now to avoid mismatches during deployment.
+  // You can pin later (e.g., "2023-10-16") once everything is stable.
 });
 
 export async function POST(req: Request) {
@@ -59,7 +59,10 @@ export async function POST(req: Request) {
     });
 
     if (!session.url) {
-      return NextResponse.json({ error: "Checkout session missing redirect URL" }, { status: 502 });
+      return NextResponse.json(
+        { error: "Checkout session missing redirect URL" },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({ url: session.url });
