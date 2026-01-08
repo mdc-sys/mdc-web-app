@@ -1,47 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { signUp } from "aws-amplify/auth";
 
 export default function SignupPage() {
-  const router = useRouter();
-
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"student" | "instructor">("student");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
-    // 🔎 sanity check (leave this in while testing)
-    console.log("SIGNUP PAYLOAD", {
-      email,
-      role,
-      roleType: typeof role,
-    });
-
     try {
-      await signUp({
+      const result = await signUp({
         username: email,
         password,
         options: {
           userAttributes: {
             email,
-            "custom:role": role, // MUST be a string
+            name,                 // required standard attribute
+            "custom:role": role,  // custom attribute
           },
         },
       });
 
-      // Cognito Hosted UI / email confirmation step
-      router.push("/login");
+      console.log("SIGNUP RESULT", result);
+
+      // 🔐 Save email for auto-fill on /verify
+      localStorage.setItem("pendingVerifyEmail", email);
+
+      /**
+       * Cognito is multi-step. If confirmation is required,
+       * force navigation to /verify (hard redirect is reliable here).
+       */
+      if (
+        result.isSignUpComplete === false ||
+        result.nextStep?.signUpStep === "CONFIRM_SIGN_UP"
+      ) {
+        window.location.href = "/verify";
+        return;
+      }
+
+      // Fallback: if Cognito auto-confirms, go to login
+      window.location.href = "/login";
     } catch (err: any) {
-      console.error("Signup error:", err);
-      setError(err.message || "Signup failed");
+      console.error("SIGNUP ERROR", err);
+
+      if (err?.name === "UsernameExistsException") {
+        setError("An account with this email already exists. Try logging in.");
+      } else if (err?.name === "InvalidPasswordException") {
+        setError("Password does not meet requirements.");
+      } else {
+        setError(err?.message || "Signup failed");
+      }
     } finally {
       setLoading(false);
     }
@@ -59,6 +75,7 @@ export default function SignupPage() {
     >
       <form
         onSubmit={handleSubmit}
+        noValidate
         style={{
           width: "100%",
           maxWidth: "420px",
@@ -74,6 +91,17 @@ export default function SignupPage() {
           Sign up to book or teach lessons with March Drum Corps.
         </p>
 
+        {/* FULL NAME */}
+        <label>Full Name</label>
+        <input
+          type="text"
+          required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{ width: "100%", marginBottom: "1rem" }}
+        />
+
+        {/* EMAIL */}
         <label>Email</label>
         <input
           type="email"
@@ -83,6 +111,7 @@ export default function SignupPage() {
           style={{ width: "100%", marginBottom: "1rem" }}
         />
 
+        {/* PASSWORD */}
         <label>Password</label>
         <input
           type="password"
@@ -92,6 +121,7 @@ export default function SignupPage() {
           style={{ width: "100%", marginBottom: "1.5rem" }}
         />
 
+        {/* ROLE */}
         <label>Account Type</label>
         <div
           style={{
@@ -143,12 +173,14 @@ export default function SignupPage() {
           </button>
         </div>
 
+        {/* ERROR */}
         {error && (
           <p style={{ color: "#ff6b6b", marginBottom: "1rem" }}>
             {error}
           </p>
         )}
 
+        {/* SUBMIT */}
         <button
           type="submit"
           disabled={loading}

@@ -13,7 +13,7 @@ export default function Navbar() {
   useEffect(() => {
     async function checkAuth() {
       try {
-        await getCurrentUser();
+        await getCurrentUser({});
         setIsAuthed(true);
       } catch {
         setIsAuthed(false);

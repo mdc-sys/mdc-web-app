@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCurrentUser, fetchUserAttributes } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
+import {
+  getCurrentUser,
+  fetchUserAttributes,
+} from "aws-amplify/auth";
 
-type Role = "student" | "instructor" | "admin";
+type Role = "student" | "instructor";
 
 export default function RequireRole({
   role,
@@ -14,40 +17,58 @@ export default function RequireRole({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    async function checkRole() {
+    async function checkAuth() {
       try {
-        const user = await getCurrentUser();
-        if (!user) {
-          router.push("/login");
-          return;
-        }
+        // 1️⃣ Must have an authenticated session
+        await getCurrentUser({});
 
+        // 2️⃣ Fetch attributes
         const attributes = await fetchUserAttributes();
-        const userRole =
-          attributes["custom:role"] as Role | undefined;
 
-        if (userRole !== role) {
-          router.push("/");
+        // 3️⃣ Must have verified email
+        if (attributes.email_verified !== "true") {
+          router.replace("/verify");
           return;
         }
 
-        setLoading(false);
+        const userRole = attributes["custom:role"];
+
+        // 4️⃣ Enforce role
+        if (userRole !== role) {
+          router.replace(
+            userRole === "instructor" ? "/instructor" : "/student"
+          );
+          return;
+        }
+
+        // ✅ Access granted
+        setChecking(false);
       } catch {
-        router.push("/login");
+        // ❌ Not logged in
+        router.replace("/login");
       }
     }
 
-    checkRole();
+    checkAuth();
   }, [role, router]);
 
-  if (loading) {
+  // Optional loading state (prevents flash)
+  if (checking) {
     return (
-      <main>
-        <p>Checking access…</p>
-      </main>
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--mdc-muted)",
+        }}
+      >
+        Checking access…
+      </div>
     );
   }
 

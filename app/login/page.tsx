@@ -1,88 +1,106 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "aws-amplify/auth";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { signIn } from "aws-amplify/auth";
 
 export default function LoginPage() {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setLoading(true);
 
     try {
-      await signIn({
+      const result = await signIn({
         username: email,
         password,
       });
 
-      // Role-based redirect will happen later
-      router.push("/");
+      console.log("SIGN IN RESULT", result);
+
+      // 🚨 If not fully signed in, user MUST verify email
+      if (!result.isSignedIn) {
+        window.location.href = "/verify";
+        return;
+      }
+
+      // If sign-in completes, route to home (Get Started will route correctly)
+      router.replace("/redirect");
+
     } catch (err: any) {
-      setError(err.message || "Login failed");
+      console.error("LOGIN ERROR", err);
+
+      if (err?.name === "UserNotConfirmedException") {
+        window.location.href = "/verify";
+      } else if (err?.name === "NotAuthorizedException") {
+        setError("Incorrect email or password.");
+      } else {
+        setError(err?.message || "Login failed");
+      }
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: "80px auto" }}>
-      <h1>Log In</h1>
-      <p>Access your March Drum Corps account.</p>
+    <main
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "2rem",
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          width: "100%",
+          maxWidth: "420px",
+          padding: "2rem",
+          borderRadius: "12px",
+          border: "1px solid var(--mdc-border)",
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(12px)",
+        }}
+      >
+        <h1>Log In</h1>
 
-      <form onSubmit={handleLogin}>
+        <label>Email</label>
         <input
           type="email"
-          placeholder="Email"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          style={{ width: "100%", marginBottom: 12 }}
+          style={{ width: "100%", marginBottom: "1rem" }}
         />
 
+        <label>Password</label>
         <input
           type="password"
-          placeholder="Password"
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          style={{ width: "100%", marginBottom: 12 }}
+          style={{ width: "100%", marginBottom: "1.5rem" }}
         />
 
         {error && (
-          <p style={{ color: "red", marginBottom: 12 }}>
+          <p style={{ color: "#ff6b6b", marginBottom: "1rem" }}>
             {error}
           </p>
         )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{ width: "100%" }}
-        >
+        <button type="submit" disabled={loading} style={{ width: "100%" }}>
           {loading ? "Logging in..." : "Log In"}
         </button>
       </form>
-
-      <div style={{ marginTop: 16, textAlign: "center" }}>
-        <p>
-          Don’t have an account?{" "}
-          <Link href="/signup">Create one</Link>
-        </p>
-
-        <p style={{ marginTop: 8 }}>
-          Didn’t verify your email?{" "}
-          <Link href="/verify">Verify here</Link>
-        </p>
-      </div>
     </main>
   );
 }

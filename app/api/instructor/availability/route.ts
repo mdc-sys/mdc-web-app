@@ -1,25 +1,26 @@
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { cookies, headers } from "next/headers";
 
 import { getCurrentUser } from "aws-amplify/auth/server";
+import { google } from "googleapis";
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 
-import { google } from "googleapis";
+// 🔒 REQUIRED for Amplify server auth
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-// DynamoDB client
 const ddb = DynamoDBDocumentClient.from(
-  new DynamoDBClient({
-    region: process.env.AWS_REGION,
-  })
+  new DynamoDBClient({ region: process.env.AWS_REGION! })
 );
 
 export async function GET() {
   try {
-    // 🔐 Authenticated instructor (SERVER SAFE)
+    // ✅ MUST pass BOTH cookies() and headers()
     const user = await getCurrentUser({
-      cookies,
+      cookies: cookies(),
+      headers: headers(),
     });
 
     const instructorId = user.userId;
@@ -31,7 +32,6 @@ export async function GET() {
       );
     }
 
-    // 📦 Load calendar connection from DynamoDB
     const result = await ddb.send(
       new GetCommand({
         TableName: "InstructorCalendars",
@@ -54,18 +54,9 @@ export async function GET() {
       timezone = "UTC",
     } = result.Item as any;
 
-    if (!accessToken || !refreshToken) {
-      return NextResponse.json({
-        timezone,
-        busy: [],
-        reason: "Missing Google OAuth tokens",
-      });
-    }
-
-    // 🔑 Google OAuth
     const auth = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET
+      process.env.GOOGLE_CLIENT_ID!,
+      process.env.GOOGLE_CLIENT_SECRET!
     );
 
     auth.setCredentials({
@@ -88,17 +79,14 @@ export async function GET() {
       },
     });
 
-    const busy = fb.data.calendars?.[calendarId]?.busy ?? [];
-
     return NextResponse.json({
       timezone,
-      busy,
+      busy: fb.data.calendars?.[calendarId]?.busy ?? [],
     });
   } catch (err: any) {
     console.error("Availability error:", err);
-
     return NextResponse.json(
-      { error: err?.message ?? "Failed to load availability" },
+      { error: err.message ?? "Unknown error" },
       { status: 500 }
     );
   }
