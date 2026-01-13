@@ -1,214 +1,87 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
 
-type BusyBlock = {
-  start: string;
-  end: string;
+type InstructorCard = {
+  instructorId: string;
+  name: string;
+  instrument?: string;
+  title?: string;
+  bio?: string;
 };
 
-type Slot = {
-  start: Date;
-  end: Date;
-};
-
-export default function StudentBookingPage() {
-  const [busy, setBusy] = useState<BusyBlock[]>([]);
-  const [slots, setSlots] = useState<Slot[]>([]);
-  const [lessonLength, setLessonLength] = useState<30 | 60>(30);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // ----------------------------------
-  // Fetch instructor availability
-  // ----------------------------------
-  useEffect(() => {
-    async function loadAvailability() {
-      try {
-        const res = await fetch("/api/instructor/availability");
-
-        if (!res.ok) {
-          throw new Error("Failed to load availability");
-        }
-
-        const data = await res.json();
-        setBusy(data.busy || []);
-      } catch (err: any) {
-        setError(err.message || "Error loading availability");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadAvailability();
-  }, []);
-
-  // ----------------------------------
-  // Generate available slots
-  // ----------------------------------
-  useEffect(() => {
-    const generated = generateSlots(busy, lessonLength);
-    setSlots(generated);
-  }, [busy, lessonLength]);
-
-  // ----------------------------------
-  // Stripe Checkout
-  // ----------------------------------
-  async function startCheckout(slot: Slot) {
-    try {
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          start: slot.start.toISOString(),
-          end: slot.end.toISOString(),
-          lessonLength,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.url) {
-        throw new Error(data.error || "Unable to start checkout");
-      }
-
-      // 🚀 Redirect to Stripe Checkout
-      window.location.href = data.url;
-    } catch (err: any) {
-      alert(err.message || "Checkout failed");
-    }
-  }
-
-  if (loading) {
-    return <p style={{ padding: "2rem" }}>Loading availability…</p>;
-  }
-
-  if (error) {
-    return (
-      <p style={{ padding: "2rem", color: "#ff6b6b" }}>
-        {error}
-      </p>
-    );
-  }
+export default function StudentPage() {
+  // MVP: hardcode one instructor.
+  // Later: fetch from DynamoDB or a "public instructors" endpoint.
+  const instructors: InstructorCard[] = [
+    {
+      instructorId: "inst-001",
+      name: "MDC Instructor",
+      instrument: "Marching Arts",
+      title: "Private Lessons",
+      bio: "Book a lesson using the instructor’s MDC availability. Google Calendar may optionally block conflicts.",
+    },
+  ];
 
   return (
-    <main style={{ padding: "2rem" }}>
-      <h1>Book a Lesson</h1>
+    <main className="min-h-screen bg-black text-white px-6 py-10">
+      <div className="max-w-3xl mx-auto space-y-6">
+        <header className="space-y-2">
+          <h1 className="text-2xl font-semibold">Student Dashboard</h1>
+          <p className="text-white/70">
+            Choose an instructor to view available lesson times and book a session.
+          </p>
+        </header>
 
-      {/* Lesson length */}
-      <div style={{ marginBottom: "1.5rem" }}>
-        <label>Lesson Length</label>
-        <div style={{ display: "flex", gap: "1rem", marginTop: "0.5rem" }}>
-          <button
-            onClick={() => setLessonLength(30)}
-            style={lessonLength === 30 ? selectedStyle : buttonStyle}
-          >
-            30 Minutes
-          </button>
-          <button
-            onClick={() => setLessonLength(60)}
-            style={lessonLength === 60 ? selectedStyle : buttonStyle}
-          >
-            60 Minutes
-          </button>
-        </div>
+        <section className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-medium">Instructors</h2>
+            <span className="text-xs text-white/60">
+              {instructors.length} available
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            {instructors.map((i) => (
+              <div
+                key={i.instructorId}
+                className="rounded-2xl border border-white/10 bg-black/30 p-5 space-y-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="text-lg font-semibold">{i.name}</div>
+                    <div className="text-sm text-white/70">
+                      {i.title}
+                      {i.instrument ? ` • ${i.instrument}` : ""}
+                    </div>
+                  </div>
+
+                  <Link
+                    href={`/student/book/${encodeURIComponent(i.instructorId)}`}
+                    className="shrink-0 inline-flex items-center justify-center px-4 py-2 rounded-xl bg-white text-black font-medium hover:opacity-90"
+                  >
+                    Book
+                  </Link>
+                </div>
+
+                {i.bio && <p className="text-sm text-white/70">{i.bio}</p>}
+
+                <div className="text-xs text-white/50">
+                  Instructor ID: <span className="font-mono">{i.instructorId}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-2">
+          <h3 className="text-base font-medium">What happens next?</h3>
+          <p className="text-sm text-white/70">
+            After selecting an instructor, you’ll choose a date, select an available time,
+            and continue to payment.
+          </p>
+        </section>
       </div>
-
-      {/* Available slots */}
-      <h2>Available Times</h2>
-
-      {slots.length === 0 && (
-        <p>No available slots in the next two weeks.</p>
-      )}
-
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {slots.map((slot, i) => (
-          <li key={i} style={{ marginBottom: "0.75rem" }}>
-            <button
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                borderRadius: "8px",
-                border: "1px solid #444",
-                background: "#111",
-                color: "white",
-                cursor: "pointer",
-              }}
-              onClick={() => startCheckout(slot)}
-            >
-              {slot.start.toLocaleDateString()}{" "}
-              {slot.start.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}{" "}
-              –{" "}
-              {slot.end.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </button>
-          </li>
-        ))}
-      </ul>
     </main>
   );
 }
-
-// ----------------------------------
-// Slot generation logic
-// ----------------------------------
-function generateSlots(busy: BusyBlock[], length: 30 | 60): Slot[] {
-  const slots: Slot[] = [];
-
-  const startHour = 9;
-  const endHour = 17;
-  const daysAhead = 14;
-
-  const busyRanges = busy.map((b) => ({
-    start: new Date(b.start),
-    end: new Date(b.end),
-  }));
-
-  for (let d = 0; d < daysAhead; d++) {
-    const day = new Date();
-    day.setDate(day.getDate() + d);
-    day.setHours(startHour, 0, 0, 0);
-
-    const dayEnd = new Date(day);
-    dayEnd.setHours(endHour, 0, 0, 0);
-
-    while (day.getTime() + length * 60000 <= dayEnd.getTime()) {
-      const slotStart = new Date(day);
-      const slotEnd = new Date(day.getTime() + length * 60000);
-
-      const overlaps = busyRanges.some(
-        (b) => slotStart < b.end && slotEnd > b.start
-      );
-
-      if (!overlaps) {
-        slots.push({ start: slotStart, end: slotEnd });
-      }
-
-      day.setMinutes(day.getMinutes() + 30);
-    }
-  }
-
-  return slots;
-}
-
-// ----------------------------------
-// Styles
-// ----------------------------------
-const buttonStyle = {
-  padding: "0.5rem 1rem",
-  borderRadius: "8px",
-  border: "1px solid #444",
-  background: "transparent",
-  color: "white",
-  cursor: "pointer",
-};
-
-const selectedStyle = {
-  ...buttonStyle,
-  background: "linear-gradient(135deg, #8b1c3d, #5a2ca0)",
-};

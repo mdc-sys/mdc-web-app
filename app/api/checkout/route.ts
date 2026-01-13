@@ -1,46 +1,96 @@
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2023-10-16",
+  // Omit apiVersion to avoid SDK/type mismatches.
 });
+
+function toISOIfPossible(value: unknown): string | null {
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
 
 export async function POST(req: Request) {
   try {
-    const { start, end, lessonLength } = await req.json();
+    const body = await req.json();
 
-    if (!start || !end || !lessonLength) {
+    /**
+     * Support BOTH request shapes:
+     * A) Legacy: { start, end, lessonLength }
+     * B) Current UI: { bookingId, length }
+     */
+    const bookingId =
+      typeof body?.bookingId === "string" && body.bookingId.trim().length > 0
+        ? body.bookingId.trim()
+        : null;
+
+    // IMPORTANT: bookingId is REQUIRED for webhook → DynamoDB updates
+    if (!bookingId) {
       return NextResponse.json(
-        { error: "Missing booking info" },
+        { error: "Missing bookingId for checkout." },
         { status: 400 }
       );
     }
 
-    // Pricing (USD)
-    const price =
-      lessonLength === 60 ? 6000 : 2500; // $60 / $25
+    const lessonLengthRaw = body?.lessonLength ?? body?.length;
+    const lessonLength = Number(lessonLengthRaw);
+
+    if (![30, 60].includes(lessonLength)) {
+      return NextResponse.json(
+        { error: "Invalid lesson length (must be 30 or 60)." },
+        { status: 400 }
+      );
+    }
+
+    // Optional start/end (legacy flow). If present, include in description + metadata.
+    const startISO = toISOIfPossible(body?.start);
+    const endISO = toISOIfPossible(body?.end);
+
+    // Pricing (USD cents): 30 min = $25, 60 min = $40
+    const unitAmount = lessonLength === 60 ? 4000 : 2500;
+
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+    if (!baseUrl) {
+      return NextResponse.json(
+        { error: "NEXT_PUBLIC_BASE_URL is missing." },
+        { status: 500 }
+      );
+    }
+
+    const description = startISO
+      ? new Date(startISO).toLocaleString()
+      : `Booking ${bookingId}`;
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
+
+      // Canonical Stripe reference → used by webhook
+      client_reference_id: bookingId,
+
       line_items: [
         {
           price_data: {
             currency: "usd",
             product_data: {
               name: `${lessonLength}-Minute Lesson`,
-              description: new Date(start).toLocaleString(),
+              description,
             },
-            unit_amount: price,
+            unit_amount: unitAmount,
           },
           quantity: 1,
         },
       ],
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/student/success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/student`,
+      success_url: `${baseUrl}/student/success`,
+      cancel_url: `${baseUrl}/student`,
       metadata: {
-        start,
-        end,
+        bookingId,
+        ...(startISO ? { start: startISO } : {}),
+        ...(endISO ? { end: endISO } : {}),
         lessonLength: String(lessonLength),
       },
     });
@@ -49,7 +99,7 @@ export async function POST(req: Request) {
   } catch (err: any) {
     console.error("Stripe checkout error:", err);
     return NextResponse.json(
-      { error: err.message || "Checkout failed" },
+      { error: err?.message || "Checkout failed" },
       { status: 500 }
     );
   }

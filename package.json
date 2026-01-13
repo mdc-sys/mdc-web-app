@@ -8,15 +8,15 @@
     "start": "next start -p 3000"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.962.0",
-    "@aws-sdk/lib-dynamodb": "^3.962.0",
+    "@aws-sdk/client-dynamodb": "^3.967.0",
+    "@aws-sdk/lib-dynamodb": "^3.967.0",
     "@stripe/stripe-js": "^8.6.0",
     "aws-amplify": "^6.15.9",
     "googleapis": "^169.0.0",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "stripe": "^20.1.0"
+    "stripe": "^20.1.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

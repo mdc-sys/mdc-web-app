@@ -9,7 +9,9 @@ export default function PaymentPage() {
   const lengthParam = params.get("length");
 
   const length = lengthParam === "60" ? 60 : 30;
-  const price = length === 60 ? 60 : 25;
+
+  // Pricing: 30 min = $25, 60 min = $40
+  const price = length === 60 ? 40 : 25;
 
   const [isPaying, setIsPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +39,13 @@ export default function PaymentPage() {
       }
 
       const data = await res.json();
+
+      if (!data?.url) {
+        setError("Checkout session missing redirect URL.");
+        setIsPaying(false);
+        return;
+      }
+
       window.location.href = data.url;
     } catch {
       setError("Network error.");
